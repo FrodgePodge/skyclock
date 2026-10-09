@@ -4,6 +4,8 @@
 
 A quiet desktop background: a garden under the **real sky over your location**, with clocks for the cities you choose. It works on one, two or three monitors.
 
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/frodgepodge)
+
 - **The sun and moon are where they really are**, with the moon's true phase, tilted so its lit side faces the sun.
 - **Eclipses are real.** A solar eclipse covers the sun as much as it does at *your* location (parallax and all), the sky and clocks darken to twilight, the stars come out and a total eclipse shows the corona. A lunar eclipse slides Earth's shadow across the moon and turns it copper.
 - **About 2,000 stars and the five naked-eye planets** (Mercury, Venus, Mars, Jupiter, Saturn) sit in their true places, wheeling overhead as the night goes on. Planets have a faint hue; stars are white.
@@ -77,6 +79,10 @@ The screenshots in `screenshots/` were made with these.
 - **The sun and moon use a separate full-circle "panorama"** across all your monitors, so they're on screen whenever they're above the horizon, however your window faces. They travel left to right (clockwise). The panorama is cut where neither can be above the horizon (north in the northern hemisphere, south in the southern), so they never cross the join. Within about 29° of the equator they sometimes pass the cut, and slide off one edge and on at the other.
 - The sun's and stars' x positions therefore don't line up with each other. That's deliberate.
 - The fainter stars are real (they're the catalogue down to magnitude 5.2), but there's no Milky Way or deep-sky objects.
+
+## Support
+
+Sky Clock is free. If it brightens your desk, you can [buy me a coffee on Ko-fi](https://ko-fi.com/frodgepodge).
 
 ## Licence
 
