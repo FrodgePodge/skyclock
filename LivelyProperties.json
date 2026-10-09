@@ -1,0 +1,68 @@
+{
+  "locationLabel": {
+    "type": "label",
+    "text": "Where you are (approximate is fine)"
+  },
+  "latitude": {
+    "type": "slider",
+    "text": "Latitude (degrees; south is negative)",
+    "min": -90,
+    "max": 90,
+    "step": 0.1,
+    "value": 51.5
+  },
+  "longitude": {
+    "type": "slider",
+    "text": "Longitude (degrees; west is negative)",
+    "min": -180,
+    "max": 180,
+    "step": 0.1,
+    "value": -0.1
+  },
+  "window": {
+    "type": "dropdown",
+    "text": "Which way your window faces",
+    "value": 2,
+    "items": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+  },
+  "monitors": {
+    "type": "dropdown",
+    "text": "How many monitors (with the screen layout set to Span)",
+    "value": 0,
+    "items": ["Work it out", "1", "2", "3"]
+  },
+  "bezel": {
+    "type": "slider",
+    "text": "Gap between monitors (pixels)",
+    "min": 0,
+    "max": 300,
+    "step": 5,
+    "value": 50
+  },
+  "cities": {
+    "type": "textbox",
+    "text": "Clocks, up to 5 (Name=Timezone, separated by commas; add =-1 or =1 to nudge one left or right)",
+    "value": "San Francisco=America/Los_Angeles, New York=America/New_York, London=Europe/London, Tokyo=Asia/Tokyo, Sydney=Australia/Sydney"
+  },
+  "order": {
+    "type": "dropdown",
+    "text": "Order of the clocks",
+    "value": 0,
+    "items": ["As listed", "By timezone, west to east"]
+  },
+  "home": {
+    "type": "textbox",
+    "text": "Measure clock offsets from this timezone (local = this computer's)",
+    "value": "local"
+  },
+  "frog": {
+    "type": "checkbox",
+    "text": "Show the frog",
+    "value": true
+  },
+  "crab": {
+    "type": "checkbox",
+    "text": "Show the crab",
+    "value": true
+  }
+}

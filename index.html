@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Clock</title>
+<style>
+  :root {
+    --bg: #0f1211;
+    --text: #b4b0a8; --text-night: #9c998f; --ring: #232824;
+    --muted: #6c6e68;
+    --faint: #2c312d;
+    --orange: #b8693a;
+    /* sky colours, set from the sun's height over your location */
+    --sky-top: #0b0e0d; --sky-bot: #0f1312; --glow: #191e1b; --hor: #000; --soil: #131614;
+    --soil-far: #121513; --soil-mid: #131614; --water: #0d1110;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky-top); }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: var(--text); }
+
+  svg.view { position: fixed; top: 0; height: 100%; }
+  svg.view .sway { transform-box: view-box; animation: sway 16s ease-in-out infinite alternate; }
+  svg.view .sway.slow { animation-duration: 23s; }
+  @keyframes sway { from { transform: rotate(-1.1deg); } to { transform: rotate(1.3deg); } }
+
+  /* the frog and the crab, in the open corner of the garden (each can be switched off in config.js) */
+  body.no-frog .frog, body.no-crab .crab { display: none; }
+  .frog .body { animation: bob 4.6s steps(1) infinite; }
+  .crab .body { animation: scuttle 11s steps(1) infinite; }
+  .frog .eyes { transform-box: fill-box; transform-origin: center; animation: blink 7s infinite; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes blink { 0%, 95%, 100% { transform: scaleY(1); } 96.5% { transform: scaleY(0.15); } }
+  @keyframes scuttle { 0%, 38% { transform: translateX(0); } 40% { transform: translateX(-9px); } 44% { transform: translateX(-18px); } 46%, 78% { transform: translateX(-18px); } 80% { transform: translateX(-9px); } 82%, 100% { transform: translateX(0); } }
+
+  /* clocks */
+  #clocks {
+    position: fixed; top: 46%; transform: translate(-50%, -50%);
+    display: flex; align-items: stretch;
+    text-shadow: 0 0 22px rgba(0, 0, 0, .35);
+  }
+  .city { text-align: center; padding: 0 clamp(18px, 3vw, 64px); }
+  .city + .city { border-left: 1px solid var(--faint); }
+  .name { font-size: clamp(10px, 1.5vh, 15px); letter-spacing: .34em; text-transform: uppercase; color: var(--muted); padding-left: .34em; }
+  .time { font-size: clamp(36px, 8vh, 88px); font-weight: 200; font-variant-numeric: tabular-nums; line-height: 1.15; margin: .12em 0 .1em; }
+  .meta { font-size: clamp(10px, 1.35vh, 14px); color: var(--muted); display: flex; gap: .7em; justify-content: center; align-items: center; letter-spacing: .08em; }
+  .dot { width: .6em; height: .6em; border-radius: 50%; }
+  .day .dot { background: var(--orange); opacity: .7; }
+  .night .dot { box-shadow: inset .2em -.13em 0 0 var(--muted); transform: rotate(-20deg); }
+  .night .time { color: var(--text-night); }
+
+  /* drifting petals */
+  .petal {
+    position: fixed; top: -4vh; width: 10px; height: 6px; border-radius: 70% 0 70% 0;
+    background: #8a5662; opacity: .3; animation: drift linear infinite;
+  }
+  @keyframes drift {
+    0%   { transform: translate(0, 0) rotate(0deg); }
+    50%  { transform: translate(-6vh, 55vh) rotate(200deg); }
+    100% { transform: translate(4vh, 110vh) rotate(420deg); }
+  }
+
+  /* gentle extra dimming in the evening */
+  #dim { position: fixed; inset: 0; background: #000; opacity: 0; transition: opacity 60s linear; pointer-events: none; }
+
+  /* a few stars twinkle */
+  .twinkle { transform-box: fill-box; transform-origin: center; animation: twinkle 5s ease-in-out infinite alternate; }
+  @keyframes twinkle { from { transform: scale(.55); } to { transform: scale(1.2); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    svg.view .sway, .frog .body, .crab .body, .frog .eyes, .petal, .twinkle { animation: none; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="skyGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1080">
+      <stop offset="0" style="stop-color: var(--sky-top)"/>
+      <stop offset="1" style="stop-color: var(--sky-bot)"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" style="stop-color: var(--glow)"/>
+      <stop offset="1" style="stop-color: var(--glow); stop-opacity: 0"/>
+    </radialGradient>
+    <radialGradient id="corona">
+      <stop offset=".3" stop-color="#fff" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#fff7d6" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="umbraGrad">
+      <stop offset="0" stop-color="#8a2f14" stop-opacity=".7"/>
+      <stop offset=".8" stop-color="#8a2f14" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#8a2f14" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="penumbraGrad">
+      <stop offset="0" stop-color="#000" stop-opacity=".3"/>
+      <stop offset=".6" stop-color="#000" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="horizonGrad">
+      <stop offset="0" style="stop-color: var(--hor)"/>
+      <stop offset="1" style="stop-color: var(--hor); stop-opacity: 0"/>
+    </radialGradient>
+  </defs>
+</svg>
+
+<div id="clocks"></div>
+<div id="dim"></div>
+
+<script src="config.js"></script>
+<script src="sky-data.js"></script>
+<script>
+/*
+  One world, 1080 units high and one 1920-wide monitor after another (a 50-unit bezel gap between): one, two or three
+  monitors. Spanned across them (Lively: Screen layout > Span), each monitor's share of the window shows its slice.
+  The count comes from the window's shape unless `monitors` is set (or ?monitors=1|2|3).
+  The sky is the real one over your location, seen from a window facing the way you say: the sun, the moon, about
+  2,000 catalogue stars and the five naked-eye planets. Settings are in config.js (or Lively's customise panel).
+  Previews: ?sun=<altitude>,<azimuth>, ?moon=<altitude>,<azimuth>, ?time=<ISO time>, ?pick=<constellation id or planet>,
+  and ?lat=, ?lon=, ?dir= (a compass point or degrees) to try other places and windows.
+*/
+
+/* ---------- settings ---------- */
+const DEFAULTS = {
+  latitude: 51.5, longitude: -0.1, window: 'NE', monitors: 'auto', bezel: 50, home: 'local', order: 'listed', frog: true, crab: true, livelyPanel: true,
+  cities: [{ name: 'London', timezone: 'Europe/London' }, { name: 'New York', timezone: 'America/New_York' }, { name: 'Tokyo', timezone: 'Asia/Tokyo' }]
+};
+const MAX_CITIES = 5;
+const cfg = Object.assign({}, DEFAULTS, window.SKYCLOCK_CONFIG);
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get('lat')) cfg.latitude = +q.get('lat');
+  if (q.get('lon')) cfg.longitude = +q.get('lon');
+  if (q.get('dir')) cfg.window = q.get('dir');
+  if (q.get('monitors')) cfg.monitors = q.get('monitors');
+  if (q.get('bezel')) cfg.bezel = +q.get('bezel');
+}
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+// a compass point ("NE", "ssw") or a bearing in degrees clockwise from north (45, "112.5")
+function parseDirection(v) {
+  const s = String(v).trim().toUpperCase().replace(/\s+/g, '');
+  if (/^-?\d+(\.\d+)?$/.test(s)) return ((+s % 360) + 360) % 360;
+  const i = COMPASS.indexOf(s);
+  if (i < 0) console.warn(`Sky Clock: "${v}" isn't a compass point (N, NNE, NE, ENE, E ...) or a bearing; using north`);
+  return Math.max(0, i) * 22.5;
+}
+// "Name=Zone, Name=Zone=nudge" (the Lively text box) to the list config.js uses
+function parseCities(s) {
+  return String(s).split(/[,;\n]/).map(p => p.split('=')).filter(p => p[0].trim() && p[1] && p[1].trim())
+    .map(p => ({ name: p[0].trim(), timezone: p[1].trim(), nudge: +p[2] || 0 }));
+}
+// where the sun and moon's panorama is cut. Neither can be above the horizon in the direction of the nearer pole, so
+// that's where the seam goes, nudged up to 30 degrees anticlockwise (while the quiet band is wide enough) so the noon
+// sun lands on the right-hand screen instead of the gap between the two. Between about 29 degrees north and south
+// they can cross the seam, and just slide off one edge and back on at the other
+function seamFor(lat) {
+  const ratio = Math.sin(28.6 * Math.PI / 180) / Math.cos(lat * Math.PI / 180);
+  const band = Math.abs(lat) > 28.6 && ratio < 1 ? Math.acos(ratio) * 180 / Math.PI : 0;
+  return ((lat >= 0 ? 0 : 180) - Math.min(30, Math.max(0, band - 8)) + 360) % 360;
+}
+let SITE = { lat: 0, lon: 0 }, WINDOW_AZ = 0, SEAM_AZ = 0, HOME_TZ = 'UTC';
+
+// The world is one 1080-high strip, one 1920-wide monitor after another with a 50-unit bezel gap between (so one, two or
+// three monitors are 1920, 3890 or 5860 units wide). setWorld() sets how many; each monitor gets its own SVG slice of it
+const MON = 1920, H = 1080;
+let GAP = 50;                                                  // the bezel gap, from the `bezel` setting
+const monitorX = i => i * (MON + GAP);
+let N_MON = 0, WORLD_W = 0, WORLD_CX = 0, SKY_HSCALE = 13;
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- the real sky: stars and planets ---------- */
+const RAD = Math.PI / 180;
+const SKY_OBJS = [];
+for (let i = 0; i < STAR_CAT.length; i += 3)
+  SKY_OBJS.push({ ra: STAR_CAT[i] / 100 * RAD, dec: STAR_CAT[i + 1] / 100 * RAD, mag: STAR_CAT[i + 2] / 10, color: '#fff' });
+const CONSTELLATIONS = CONST_RAW.map(([id, name, ...lines]) => ({
+  id, name, lines: lines.map(l => { const pts = []; for (let i = 0; i < l.length; i += 2) pts.push({ ra: l[i] / 100 * RAD, dec: l[i + 1] / 100 * RAD }); return pts; })
+}));
+SKY_OBJS.forEach(o => { o.r = Math.min(3.2, Math.max(.5, .55 + (4.2 - o.mag) * .42)); o.op = Math.min(1, Math.max(.16, .32 + (4.8 - o.mag) * .15)); });
+
+// planets: JPL approximate Keplerian elements (1800-2050) -- a, e, I, L, long. perihelion, long. node, each with its rate per century
+const EARTH = [1.00000261, 0.00000562, 0.01671123, -0.00004392, -0.00001531, -0.01294668, 100.46457166, 35999.37244981, 102.93768193, 0.32327364, 0, 0];
+const PLANETS = [
+  { name: 'Mercury', color: '#c9b8aa', m0: -0.42, mi: [0.0380, -0.000273, 2e-6], el: [0.38709927, 0.00000037, 0.20563593, 0.00001906, 7.00497902, -0.00594749, 252.25032350, 149472.67411175, 77.45779628, 0.16047689, 48.33076593, -0.12534081] },
+  { name: 'Venus', color: '#f6edc2', m0: -4.40, mi: [0.0009, 0.000239, -6.5e-7], el: [0.72333566, 0.00000390, 0.00677672, -0.00004107, 3.39467605, -0.00078890, 181.97909950, 58517.81538729, 131.60246718, 0.00268329, 76.67984255, -0.27769418] },
+  { name: 'Mars', color: '#e58a6c', m0: -1.52, mi: [0.016, 0, 0], el: [1.52371034, 0.00001847, 0.09339410, 0.00007882, 1.84969142, -0.00813131, -4.55343205, 19140.30268499, -23.94362959, 0.44441088, 49.55953891, -0.29257343] },
+  { name: 'Jupiter', color: '#efd6a2', m0: -9.40, mi: [0.005, 0, 0], el: [5.20288700, -0.00011607, 0.04838624, -0.00013253, 1.30439695, -0.00183714, 34.39644051, 3034.74612775, 14.72847983, 0.21252668, 100.47390909, 0.20469106] },
+  { name: 'Saturn', color: '#e2cd88', m0: -8.88, mi: [0, 0, 0], el: [9.53667594, -0.00125060, 0.05386179, -0.00050991, 2.48599187, 0.00193609, 49.95424423, 1222.49362201, 92.59887831, -0.41897216, 113.66242448, -0.28867794] }
+];
+for (const p of PLANETS) SKY_OBJS.push(Object.assign(p, { planet: true, ra: 0, dec: 0, mag: p.m0 }));
+
+// heliocentric ecliptic position (AU) from Keplerian elements, T in Julian centuries since J2000
+function helio(e, T) {
+  const [a0, a1, e0, e1, i0, i1, L0, L1, w0, w1, O0, O1] = e;
+  const a = a0 + a1 * T, ecc = e0 + e1 * T, I = (i0 + i1 * T) * RAD, O = (O0 + O1 * T) * RAD;
+  const wbar = w0 + w1 * T, w = wbar * RAD - O;
+  const M = (((L0 + L1 * T) - wbar) % 360) * RAD;
+  let E = M;
+  for (let n = 0; n < 8; n++) E = M + ecc * Math.sin(E);
+  const xp = a * (Math.cos(E) - ecc), yp = a * Math.sqrt(1 - ecc * ecc) * Math.sin(E);
+  const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
+  return [(cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp,
+          (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp,
+          (sw * sI) * xp + (cw * sI) * yp];
+}
+// fills in each planet's geocentric RA/Dec (J2000) and apparent magnitude; d is days since J2000
+function updatePlanets(d) {
+  const T = d / 36525, earth = helio(EARTH, T), R = Math.hypot(...earth);
+  const ce = Math.cos(23.43928 * RAD), se = Math.sin(23.43928 * RAD);
+  for (const p of PLANETS) {
+    const h = helio(p.el, T), r = Math.hypot(...h);
+    const g = [h[0] - earth[0], h[1] - earth[1], h[2] - earth[2]], D = Math.hypot(...g);
+    p.ra = Math.atan2(g[1] * ce - g[2] * se, g[0]);
+    p.dec = Math.asin((g[1] * se + g[2] * ce) / D);
+    const i = Math.acos((r * r + D * D - R * R) / (2 * r * D)) / RAD;   // phase angle
+    p.mag = p.m0 + 5 * Math.log10(r * D) + p.mi[0] * i + p.mi[1] * i * i + p.mi[2] * i * i * i;
+  }
+}
+// J2000 coordinates carried forward to today (low-precision general precession)
+function precess(ra, dec, yrs) {
+  const m = 0.012812 * RAD, n = 0.005568 * RAD;
+  return [ra + (m + n * Math.sin(ra) * Math.tan(dec)) * yrs, dec + n * Math.cos(ra) * yrs];
+}
+
+const C = {
+  forest: '#24382a', ivy: '#2e4535', sage: '#4c5b48', olive: '#47472c', moss: '#3a4a2c',
+  bark: '#3b2e25', walnut: '#4d3a2c', soil: '#131614',
+  rose: '#7f4f5b', blush: '#94636e', mauve: '#5e3f49',
+  grey: '#474a46', ash: '#5d605b',
+  orange: '#b8693a', crab: '#b9674a', frog: '#5d7d44', ink: '#141716'
+};
+
+/* the whole scene is drawn into each view, with the same seed so both halves match */
+function build(svg) {
+  const R = rng(11);
+
+  function leaf(g, x, y, ang, s, colour, slim) {
+    const w = slim ? 13 : 28;
+    const lg = el('g', { transform: `translate(${x} ${y}) rotate(${ang}) scale(${s / 100})` }, g);
+    el('path', { d: `M0 0 C25 -${w} 70 -${w + 2} 100 0 C70 ${w + 2} 25 ${w} 0 0Z`, fill: colour }, lg);
+    el('path', { d: 'M6 0 Q50 -3 94 0', stroke: C.ink, 'stroke-opacity': .45, 'stroke-width': 2, fill: 'none' }, lg);
+  }
+
+  function branch(g, d, o) {
+    const p = el('path', { d, fill: 'none', stroke: o.stem || C.bark, 'stroke-width': o.width || 3, 'stroke-linecap': 'round' }, g);
+    const L = p.getTotalLength();
+    for (let i = 1; i <= o.n; i++) {
+      const t = (i / (o.n + 1)) * L;
+      const a = p.getPointAtLength(t), b = p.getPointAtLength(Math.min(L, t + 1));
+      const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const s = o.size * (1 - (o.taper ?? .45) * i / o.n);
+      const colour = o.colours[i % o.colours.length];
+      if (o.paired) {
+        leaf(g, a.x, a.y, ang + o.spread, s, colour, o.slim);
+        leaf(g, a.x, a.y, ang - o.spread, s, colour, o.slim);
+      } else {
+        leaf(g, a.x, a.y, ang + (i % 2 ? 1 : -1) * o.spread, s, colour, o.slim);
+      }
+      if (o.flowers && i % o.flowers === 0) flower(g, a.x, a.y + 6, 13 + R() * 8, [C.rose, C.blush, C.mauve][i % 3]);
+    }
+    const end = p.getPointAtLength(L), pre = p.getPointAtLength(L - 1);
+    leaf(g, end.x, end.y, Math.atan2(end.y - pre.y, end.x - pre.x) * 180 / Math.PI, o.size * .5, o.colours[0], o.slim);
+  }
+
+  function flower(g, x, y, r, colour, centre, petals = 5) {
+    const f = el('g', { transform: `translate(${x} ${y}) rotate(${Math.round(R() * 72)})` }, g);
+    for (let i = 0; i < petals; i++)
+      el('ellipse', { cx: 0, cy: -r * .58, rx: r * .36, ry: r * .6, fill: colour, transform: `rotate(${i * 360 / petals})` }, f);
+    el('circle', { r: r * .2, fill: centre || C.orange, opacity: .8 }, f);
+  }
+
+  function bud(g, x, y, r, colour) { el('circle', { cx: x, cy: y, r, fill: colour }, g); }
+
+  // a single flower on a stem, with a leaf or two
+  function stem(g, x, base, h, r, colour) {
+    const lean = (R() - .5) * 30;
+    el('path', { d: `M${x} ${base} Q${x + lean * .2} ${base - h * .5} ${x + lean} ${base - h}`, fill: 'none', stroke: C.moss, 'stroke-width': 2.2, 'stroke-linecap': 'round' }, g);
+    leaf(g, x + lean * .1, base - h * .3, -90 - 40 - R() * 30, 30 + R() * 16, C.moss, true);
+    if (h > 120) leaf(g, x + lean * .3, base - h * .55, -90 + 40 + R() * 30, 26 + R() * 14, C.olive, true);
+    flower(g, x + lean, base - h, r, colour, R() < .3 ? C.walnut : C.orange, R() < .35 ? 6 : 5);
+  }
+
+  // foxglove-ish spike of bells
+  function spike(g, x, base, h, colour) {
+    el('path', { d: `M${x} ${base} Q${x + 6} ${base - h / 2} ${x} ${base - h}`, fill: 'none', stroke: C.moss, 'stroke-width': 2.5 }, g);
+    leaf(g, x, base - 10, -150, 46, C.forest);
+    leaf(g, x, base - 14, -30, 42, C.ivy);
+    for (let i = 0; i < 10; i++) {
+      const t = .38 + i * .065, r = (1 - t) * 15 + 3;
+      el('ellipse', { cx: x + (i % 2 ? 5 : -5), cy: base - h * t, rx: r * .8, ry: r, fill: colour }, g);
+    }
+  }
+
+  // low round shrub of leaves
+  function bush(g, x, y, r, colours, blooms) {
+    for (let i = 0; i < 18; i++)
+      leaf(g, x + (R() - .5) * r * .7, y, -180 + R() * 180, r * (.55 + R() * .5), colours[i % colours.length]);
+    for (let i = 0; i < (blooms || 0); i++)
+      flower(g, x + (R() - .5) * r * 1.3, y - r * (.3 + R() * .6), 9 + R() * 6, [C.rose, C.blush][i % 2]);
+  }
+
+  function sway(origin, slow) {
+    const g = el('g', { class: 'sway' + (slow ? ' slow' : '') }, svg);
+    g.style.transformOrigin = `${origin[0]}px ${origin[1]}px`;
+    g.style.animationDelay = `-${(R() * 20).toFixed(2)}s`;
+    return g;
+  }
+
+  /* ---- background ---- */
+  el('rect', { x: -200, y: -200, width: WORLD_W + 400, height: 1500, fill: 'url(#skyGrad)' }, svg);
+  el('circle', { cx: monitorX(Math.min(N_MON, 2) - 1) + 960, cy: 500, r: 1000, fill: 'url(#glow)' }, svg);   // behind the clocks
+  el('circle', { cx: 960, cy: 620, r: 900, fill: 'url(#glow)', opacity: .7 }, svg);
+  // the real stars and planets, placed and faded by updateStars(); own seed so the garden layout doesn't shift
+  const RS = rng(23);
+  const stars = el('g', {}, svg);
+  svg.skyEls = SKY_OBJS.map((o, i) => {
+    const c = el('circle', { r: o.r || 2, fill: o.color, visibility: 'hidden' }, stars);
+    if (!o.planet && o.mag < 3.3 && i % 3 === 0) { c.classList.add('twinkle'); c.style.animationDelay = `-${(RS() * 6).toFixed(2)}s`; }
+    return c;
+  });
+  // what the cursor is over (a planet's ring and name, or a constellation's figure), drawn by renderHover()
+  svg.hover = el('g', { style: 'opacity: 0; transition: opacity .35s; pointer-events: none' }, svg);
+  // warm glow along the horizon at sunrise and sunset, follows the sun sideways
+  const hor = el('ellipse', { cx: WORLD_CX, cy: 975, rx: 1500, ry: 520, fill: 'url(#horizonGrad)', opacity: 0 }, svg);
+  // the sun (the splash of orange), moved by updateSky()
+  const sun = el('g', {}, svg);
+  el('circle', { r: 150, fill: 'none', style: 'stroke: var(--ring)', 'stroke-width': 1.5 }, sun);
+  const corona = el('circle', { r: 160, fill: 'url(#corona)', opacity: 0 }, sun);          // only in a total eclipse
+  const sunDisc = el('circle', { r: 51, fill: C.orange, opacity: .2 }, sun);
+  // the moon, with its real phase, moving across the sky
+  const maskId = 'moonMask-' + svg.id, clipId = 'moonClip-' + svg.id, defs = el('defs', {}, svg);
+  const mask = el('mask', { id: maskId }, defs);
+  el('circle', { r: 46, fill: '#fff' }, mask);
+  const shadow = el('circle', { r: 48, fill: '#000' }, mask);
+  el('circle', { r: 46 }, el('clipPath', { id: clipId }, defs));
+  const moon = el('g', { transform: 'translate(0 0)', opacity: 0 }, svg);
+  el('circle', { r: 120, fill: 'none', style: 'stroke: var(--ring)', 'stroke-width': 1.5 }, moon);
+  const moonRing = el('circle', { r: 46, fill: 'none', style: 'stroke: var(--ring)', 'stroke-width': 1.5 }, moon);
+  const moonBase = el('circle', { r: 46, fill: '#0b0d10', opacity: 0 }, moon);              // the dark side, which covers the sun in an eclipse
+  const moonDisc = el('circle', { r: 46, fill: '#8d8f89', opacity: .35, mask: `url(#${maskId})` }, moon);
+  // Earth's shadow on the moon in a lunar eclipse, clipped to the moon's disc and kept upright (counter-rotated)
+  const shadowRot = el('g', {}, el('g', { 'clip-path': `url(#${clipId})` }, moon));
+  const penumbra = el('circle', { r: 0, fill: 'url(#penumbraGrad)', opacity: 0 }, shadowRot);
+  const umbra = el('circle', { r: 0, fill: 'url(#umbraGrad)', opacity: 0 }, shadowRot);
+  svg.sky = { hor, sun, sunDisc, corona, moon, moonDisc, moonRing, moonBase, shadowRot, penumbra, umbra, shadow, stars };
+  /* ---- the framing foliage: the top-left corner, a garland across each gap between monitors, the right-hand edge ---- */
+  let g = sway([0, 0]);
+  branch(g, 'M-20 -10 C120 60 260 120 470 250', { n: 9, size: 92, spread: 48, colours: [C.forest, C.ivy, C.sage] });
+  flower(g, 170, 92, 18, C.rose);
+  flower(g, 430, 228, 20, C.blush, C.walnut, 6);
+  g = sway([0, 0], true);
+  branch(g, 'M-30 40 C60 160 120 280 210 450', { n: 7, size: 80, spread: 52, colours: [C.ivy, C.moss, C.forest] });
+  flower(g, 215, 455, 26, C.rose);
+  bud(g, 82, 215, 6, C.blush);
+
+  // a garland draped across each gap between monitors, each a different design so no two look alike (three monitors
+  // have two gaps). x is relative to the gap's middle
+  const garlands = [
+    // one long swag, lowest just right of the gap, with a strand hanging from its left side (the original)
+    cx => {
+      g = sway([cx - 5, -40], true);
+      branch(g, `M${cx - 625} -20 C${cx - 385} 130 ${cx - 145} 170 ${cx} 140 S${cx + 355} 60 ${cx + 615} -20`, { n: 22, size: 46, spread: 55, taper: .1, colours: [C.ivy, C.sage, C.forest], flowers: 4 });
+      g = sway([cx - 245, -20]);
+      branch(g, `M${cx - 245} -20 C${cx - 255} 70 ${cx - 215} 140 ${cx - 240} 230`, { n: 7, size: 36, spread: 58, colours: [C.moss, C.ivy] });
+      flower(g, cx - 240, 236, 13, C.mauve, C.walnut);
+    },
+    // two swags caught up on a hook left of the gap: a short deep one, then a long shallow one, with a strand from the hook
+    cx => {
+      const hx = cx - 230, hy = 36;                            // the hook
+      g = sway([hx, -40], true);
+      branch(g, `M${cx - 760} -20 Q${cx - 495} 280 ${hx} ${hy} Q${cx + 230} 215 ${cx + 720} -20`, { n: 20, size: 42, spread: 60, taper: .15, colours: [C.forest, C.moss, C.sage], flowers: 3 });
+      el('circle', { cx: hx, cy: hy, r: 5, fill: C.bark }, g);
+      g = sway([hx, hy]);
+      branch(g, `M${hx} ${hy} C${hx + 18} ${hy + 50} ${hx - 14} ${hy + 110} ${hx + 6} ${hy + 165}`, { n: 5, size: 32, spread: 62, colours: [C.ivy, C.sage] });
+      flower(g, hx + 6, hy + 171, 15, C.rose);
+      bud(g, hx - 12, hy + 98, 6, C.blush);
+    }
+  ];
+  for (let i = 1; i < N_MON; i++) garlands[(i - 1) % garlands.length](monitorX(i) - GAP / 2);
+
+  /* ---- the ground: three hills, each lower on screen and bigger than the one behind it, which is what makes depth.
+     Plants are rooted on the hill they belong to (plant() puts the base exactly on its curve), drawn at that hill's scale,
+     and the next hill covers anything below its own ridge. The far ones fade into the sky's colour. Each hill runs
+     unbroken across every monitor. ---- */
+  const hills = [
+    { k: .52, y: x => 962 - 7 * Math.sin(x / 460 + 1.1), fill: 'var(--soil-far)', haze: .85 },
+    { k: .76, y: x => 992 - 9 * Math.sin(x / 610 + .3),  fill: 'var(--soil-mid)', haze: .93 },
+    { k: 1,   y: x => 1024 - 12 * Math.sin(x / 700),     fill: 'var(--soil)',     haze: 1 }
+  ];
+  const groundY = hills[2].y;
+  const hillG = hills.map(h => {
+    let d = 'M-50 1200';
+    for (let x = -50; x <= WORLD_W + 50; x += 40) d += `L${x} ${h.y(x).toFixed(1)}`;
+    el('path', { d: d + `L${WORLD_W + 50} 1200Z`, style: `fill: ${h.fill}` }, svg);
+    return el('g', { opacity: h.haze }, svg);        // this hill's plants: over its ground, under the next hill
+  });
+  // one plant on hill n at x, drawn at the hill's scale about its own base, and swaying about that base too
+  function plant(n, x, draw, slow) {
+    const h = hills[n], base = h.y(x) + 3;
+    const outer = el('g', { transform: `translate(${x} ${base}) scale(${h.k}) translate(${-x} ${-base})` }, hillG[n]);
+    const g = el('g', { class: 'sway' + (slow ? ' slow' : '') }, outer);
+    g.style.transformOrigin = `${x}px ${base}px`;
+    g.style.animationDelay = `-${(R() * 20).toFixed(2)}s`;
+    draw(g, base);
+  }
+  const cols = [C.rose, C.blush, C.mauve];
+  const flowerAt = (n, x, h, i) => plant(n, x, (g, base) => stem(g, x, base, h, 14 + h / 40, cols[i % 3]), i % 2 === 0);
+  const tuftAt = (n, x, h = 75) => plant(n, x, (g, base) =>
+    branch(g, `M${x} ${base + 3} Q${x + 6} ${base - h * .5} ${x + 14} ${base - h}`, { n: 4, size: 32, spread: 60, paired: true, slim: true, colours: [C.olive, C.moss], stem: C.moss, width: 2 }), true);
+  const bushAt = (n, x, r, colours, blooms) => plant(n, x, (g, base) => bush(g, x, base + 5, r, colours, blooms), true);
+  const spikeAt = (n, x, h, colour) => plant(n, x, (g, base) => spike(g, x, base - 3, h, colour));
+
+  // plants at roughly even, jittered spacing along a hill. Each one claims the ground it covers (half-width w, before the
+  // hill's scaling) and anything that would land on ground already claimed on that hill is skipped, so plants stand
+  // apart instead of piling into each other. The big ones go first so they get their places
+  let count = 0;
+  const taken = [[], [], []];
+  const claim = (n, x, w) => taken[n].push([x, w]);
+  const free = (n, x, w) => taken[n].every(([tx, tw]) => Math.abs(x - tx) > (w + tw) * hills[n].k);
+  const scatter = (n, spacing, w, fn) => {
+    for (let x = 30 + R() * spacing * .6; x < WORLD_W - 30; x += spacing * (.7 + R() * .6))
+      if (free(n, x, w)) { claim(n, x, w); fn(x, count++); }
+  };
+  const FROG_X = 800;
+  claim(2, FROG_X + 50, 150);                                  // the frog and the crab's open corner of the near hill
+  claim(2, WORLD_W - 230, 270);                                // the corner foliage at the far right already fills these
+  claim(1, WORLD_W - 140, 170);
+  // the far hill
+  scatter(0, 900, 70, x => bushAt(0, x, 100 + R() * 25, [C.forest, C.ivy, C.sage], 2));
+  scatter(0, 230, 24, (x, i) => flowerAt(0, x, 170 + R() * 70, i));
+  scatter(0, 420, 20, x => tuftAt(0, x, 70));
+  // the middle hill
+  scatter(1, 1100, 65, x => bushAt(1, x, 90 + R() * 20, [C.ivy, C.moss, C.forest], 2));
+  scatter(1, 1500, 30, (x, i) => spikeAt(1, x, 190 + R() * 40, cols[i % 3]));
+  scatter(1, 320, 24, (x, i) => flowerAt(1, x, 140 + R() * 60, i + 1));
+  scatter(1, 520, 20, x => tuftAt(1, x, 75));
+  // the near hill: the big ones
+  scatter(2, 820, 90, (x, i) => bushAt(2, x, 100 + R() * 35, [[C.forest, C.ivy, C.sage], [C.ivy, C.moss, C.forest], [C.forest, C.sage, C.ivy]][i % 3], 3 + (i % 3)));
+  scatter(2, 1250, 60, (x, i) => { spikeAt(2, x - 28, 230 + R() * 80, cols[i % 3]); spikeAt(2, x + 28, 190 + R() * 50, cols[(i + 1) % 3]); });
+  scatter(2, 620, 28, (x, i) => flowerAt(2, x, 110 + R() * 110, i));
+  scatter(2, 700, 22, x => tuftAt(2, x));
+
+  // the frog, sitting on the ground in the open corner of the near hill, with a crab beside it
+  const critters = el('g', {}, svg);
+  {
+    const fx = FROG_X, gy = groundY(fx) + 3;                                  // the ground under the frog
+    const frogG = el('g', { class: 'frog' }, critters);
+    const fp = 6, fox = fx - 6 * fp, foy = gy - 8 * fp;                       // a pixel sprite, its feet on the ground
+    const frog = [
+      '  GG    GG  ',
+      ' GEPG  GEPG ',
+      ' GGGGGGGGGG ',
+      'GGGGGGGGGGGG',
+      'GGMMMMMMMMGG',
+      ' GBBBBBBBBG ',
+      ' GBBBBBBBBG ',
+      'GGG GGGG GGG'
+    ];
+    const fill = { G: C.frog, E: '#e8ead8', M: '#3f5a33', B: '#b9c58f' };
+    const fb = el('g', { class: 'body' }, frogG), fe = el('g', { class: 'eyes' }, fb);
+    frog.forEach((row, r) => [...row].forEach((ch, c) => {
+      if (ch === ' ') return;
+      el('rect', { x: fox + c * fp, y: foy + r * fp, width: fp + .4, height: fp + .4, fill: ch === 'P' ? C.ink : fill[ch] }, ch === 'P' ? fe : fb);
+    }));
+    // the crab, on the ground, sidestepping now and then
+    const kp = 3, kx = fx + 118, ky = groundY(kx) + 11;
+    const crab = [
+      '##  e   e  ##',
+      '##  #   #  ##',
+      ' ## ##### ## ',
+      '   #######   ',
+      '   #######   ',
+      '  # # # # #  '
+    ];
+    const kb = el('g', { class: 'body' }, el('g', { class: 'crab' }, critters));
+    crab.forEach((row, r) => [...row].forEach((ch, c) => {
+      if (ch !== ' ') el('rect', { x: kx + c * kp, y: ky - (6 - r) * kp, width: kp + .3, height: kp + .3, fill: ch === 'e' ? C.ink : C.crab }, kb);
+    }));
+  }
+
+  /* ---- the right-hand edge of the last monitor: foliage framing the corner ---- */
+  const X = monitorX(N_MON - 1);
+  g = sway([X + 1940, -20]);
+  branch(g, `M${X + 1940} -20 C${X + 1880} 60 ${X + 1840} 120 ${X + 1740} 190`, { n: 7, size: 76, spread: 50, colours: [C.forest, C.ivy, C.sage] });
+  flower(g, X + 1735, 195, 22, C.blush);
+  flower(g, X + 1860, 95, 18, C.rose, C.orange, 6);
+  bud(g, X + 1800, 160, 6, C.mauve);
+
+  g = sway([X + 1920, 1080]);
+  branch(g, `M${X + 1960} 1100 C${X + 1840} 960 ${X + 1720} 880 ${X + 1500} 800`, { n: 9, size: 100, spread: 50, colours: [C.forest, C.sage, C.ivy] });
+  flower(g, X + 1525, 808, 16, C.blush, C.walnut, 6);
+  flower(g, X + 1660, 880, 24, C.rose);
+  g = sway([X + 1920, 1080], true);
+  branch(g, `M${X + 1980} 1020 C${X + 1850} 990 ${X + 1740} 975 ${X + 1560} 965`, { n: 14, size: 54, spread: 62, paired: true, slim: true, colours: [C.moss, C.olive, C.sage] });
+  g = sway([X + 1920, 1080]);
+  branch(g, `M${X + 1940} 1090 C${X + 1880} 900 ${X + 1840} 800 ${X + 1760} 640`, { n: 7, size: 84, spread: 46, colours: [C.ivy, C.forest, C.moss] });
+  flower(g, X + 1755, 632, 30, C.blush);
+  flower(g, X + 1800, 715, 20, C.rose);
+  flower(g, X + 1870, 870, 22, C.mauve);
+  // a bud on a short stalk off the branch
+  el('path', { d: `M${X + 1849} 833 Q${X + 1834} 832 ${X + 1822} 845`, fill: 'none', stroke: C.moss, 'stroke-width': 2, 'stroke-linecap': 'round' }, g);
+  bud(g, X + 1822, 847, 7, C.rose);
+}
+
+/* ---------- the monitors: one SVG each, a slice of the one world ---------- */
+const clocksEl = document.getElementById('clocks');
+let svgs = [];
+function setWorld(n) {
+  N_MON = n;
+  WORLD_W = n * MON + (n - 1) * GAP;
+  WORLD_CX = WORLD_W / 2;
+  SKY_HSCALE = Math.max(SKY_SCALE, WORLD_W / 2 / 170);        // never show more than the sky's front 340 degrees across the window view
+}
+function rebuildScene() {
+  for (const v of svgs) v.remove();
+  svgs = [];
+  for (let i = 0; i < N_MON; i++) {
+    const v = document.createElementNS(NS, 'svg');
+    v.setAttribute('class', 'view');
+    v.setAttribute('id', 'view' + i);
+    v.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    v.setAttribute('aria-hidden', 'true');
+    document.body.insertBefore(v, clocksEl);
+    build(v);
+    svgs.push(v);
+  }
+  layout();
+}
+function layout() {
+  const n = svgs.length;
+  svgs.forEach((v, i) => {
+    Object.assign(v.style, { left: `${i * 100 / n}%`, width: `${100 / n}%` });
+    v.setAttribute('viewBox', `${monitorX(i)} 0 ${MON} ${H}`);
+  });
+  clocksEl.style.left = `${(Math.min(n, 2) - .5) / n * 100}%`;   // the second monitor's middle, or the only one's
+}
+// 'auto' reads the monitor count from the window's shape (a 3840x1080 window is two 16:9 screens side by side)
+function resolveMonitors() {
+  const m = String(cfg.monitors).toLowerCase();
+  if (!(+m >= 1)) return Math.min(3, Math.max(1, Math.round(innerWidth / innerHeight / (MON / H))));
+  return Math.min(3, Math.max(1, Math.round(+m)));
+}
+addEventListener('resize', () => { if (resolveMonitors() !== N_MON) applyConfig(); else layout(); });
+
+/* ---------- sky: follows the sun over your location (SITE, set by applyConfig) ---------- */
+
+// sun altitude and azimuth (degrees, azimuth from north), its ecliptic longitude (degrees) and distance (AU);
+// low-precision formulae, good to about 0.01 degrees, which is what eclipses need
+function sunPos(date, lat, lon) {
+  const rad = Math.PI / 180;
+  const d = date / 864e5 - 10957.5;                       // days since J2000
+  const g = (357.529 + 0.98560028 * d) * rad;
+  const q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g) - 0.0057) * rad;   // the last term is aberration
+  const e = (23.439 - 0.00000036 * d) * rad;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  return { ...horizontal(ra, dec, d, lat, lon), lon: L / rad, dist: 1.00014 - 0.01671 * Math.cos(g) - 0.00014 * Math.cos(2 * g) };
+}
+
+// right ascension and declination (radians) to altitude and azimuth (degrees, azimuth from north)
+function horizontal(ra, dec, d, lat, lon) {
+  const rad = Math.PI / 180;
+  const gmst = 18.697374558 + 24.06570982441908 * d;
+  const H = ((gmst * 15 + lon) % 360) * rad - ra;
+  const phi = lat * rad;
+  const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));
+  return { alt: alt / rad, az: (az / rad + 180 + 360) % 360 };
+}
+
+// the moon, from the largest terms of the standard lunar series (Meeus, ch. 47): good to a few hundredths of a degree
+// (it was a degree before, which is why it couldn't do eclipses). Each row is the multiples of the four fundamental
+// angles (mean elongation D, sun's anomaly M, moon's anomaly M', latitude argument F), then the term's size in
+// millionths of a degree (and, for the first table, of a kilometre: distance)
+const MOON_LR = [[0,0,1,0,6288774,-20905355],[2,0,-1,0,1274027,-3699111],[2,0,0,0,658314,-2955968],[0,0,2,0,213618,-569925],[0,1,0,0,-185116,48888],[0,0,0,2,-114332,-3149],[2,0,-2,0,58793,246158],[2,-1,-1,0,57066,-152138],[2,0,1,0,53322,-170733],[2,-1,0,0,45758,-204586],[0,1,-1,0,-40923,-129620],[1,0,0,0,-34720,108743],[0,1,1,0,-30383,104755],[2,0,0,-2,15327,10321],[0,0,1,2,-12528,0],[0,0,1,-2,10980,79661],[4,0,-1,0,10675,-34782],[0,0,3,0,10034,-23210],[4,0,-2,0,8548,-21636],[2,1,-1,0,-7888,24208],[2,1,0,0,-6766,30824],[1,0,-1,0,-5163,-8379],[1,1,0,0,4987,-16675],[2,-1,1,0,4036,-12831],[2,0,2,0,3994,-10445],[4,0,0,0,3861,-11650],[2,0,-3,0,3665,14403],[0,1,-2,0,-2689,-7003],[2,0,-1,2,-2602,0],[2,-1,-2,0,2390,10056],[1,0,1,0,-2348,6322],[2,-2,0,0,2236,-9884]];
+const MOON_B = [[0,0,0,1,5128122],[0,0,1,1,280602],[0,0,1,-1,277693],[2,0,0,-1,173237],[2,0,-1,1,55413],[2,0,-1,-1,46271],[2,0,0,1,32573],[0,0,2,1,17198],[2,0,1,-1,9266],[0,0,2,-1,8822],[2,-1,0,-1,8216],[2,0,-2,-1,4324],[2,0,1,1,4200],[2,1,0,-1,-3359],[2,-1,-1,1,2463],[2,-1,0,1,2211],[2,-1,-1,-1,2065],[0,1,-1,-1,-1870],[4,0,-1,-1,1828],[0,1,0,1,-1794],[0,0,0,3,-1749],[0,1,-1,1,-1565],[1,0,0,1,-1491],[0,1,1,1,-1475],[0,1,1,-1,-1410],[0,1,0,-1,-1344],[1,0,0,-1,-1335],[0,0,3,1,1107],[4,0,0,-1,1021],[4,0,-1,1,833]];
+// returns the topocentric altitude and azimuth as seen from the observer (parallax matters: up to a degree), the
+// geocentric altitude (altGeo), the ecliptic longitude, latitude (degrees) and distance (km) from the Earth's centre,
+// and the phase as the moon's elongation from the sun (0 new, .5 full). sunLon is the sun's ecliptic longitude
+function moonPos(date, lat, lon, sunLon) {
+  const rad = Math.PI / 180;
+  const d = date / 864e5 - 10957.5, T = d / 36525;
+  const Lp = 218.3164477 + 481267.88123421 * T, D = (297.8501921 + 445267.1114034 * T) * rad, M = (357.5291092 + 35999.0502909 * T) * rad;
+  const Mp = (134.9633964 + 477198.8675055 * T) * rad, F = (93.2720950 + 483202.0175233 * T) * rad;
+  const E = 1 - 0.002516 * T - 0.0000074 * T * T;       // the sun's anomaly terms shrink with the Earth's orbit's eccentricity
+  const A1 = (119.75 + 131.849 * T) * rad, A2 = (53.09 + 479264.290 * T) * rad, A3 = (313.45 + 481266.484 * T) * rad, Lr = Lp * rad;
+  const ecc = b => Math.abs(b) === 1 ? E : Math.abs(b) === 2 ? E * E : 1;
+  let sl = 3958 * Math.sin(A1) + 1962 * Math.sin(Lr - F) + 318 * Math.sin(A2), sr = 0, sb = -2235 * Math.sin(Lr) + 382 * Math.sin(A3)
+    + 175 * Math.sin(A1 - F) + 175 * Math.sin(A1 + F) + 127 * Math.sin(Lr - Mp) - 115 * Math.sin(Lr + Mp);
+  for (const [a, b, c, f, l, r] of MOON_LR) { const arg = a * D + b * M + c * Mp + f * F; sl += l * ecc(b) * Math.sin(arg); sr += r * ecc(b) * Math.cos(arg); }
+  for (const [a, b, c, f, v] of MOON_B) sb += v * ecc(b) * Math.sin(a * D + b * M + c * Mp + f * F);
+  const lonM = ((Lp + sl / 1e6) % 360 + 360) % 360, latM = sb / 1e6, dist = 385000.56 + sr / 1000;
+  const lam = lonM * rad, beta = latM * rad, e = (23.439 - 0.00000036 * d) * rad;
+  const ra = Math.atan2(Math.sin(lam) * Math.cos(e) - Math.tan(beta) * Math.sin(e), Math.cos(lam));
+  const dec = Math.asin(Math.sin(beta) * Math.cos(e) + Math.cos(beta) * Math.sin(e) * Math.sin(lam));
+  const h = horizontal(ra, dec, d, lat, lon);
+  const parallax = Math.asin(6378.14 / dist) / rad;
+  return { alt: h.alt - parallax * Math.cos(h.alt * rad), az: h.az, altGeo: h.alt, lon: lonM, lat: latM, dist, phase: ((lonM - sunLon) % 360 + 360) % 360 / 360 };
+}
+
+// eclipses. Solar: the moon's disc (as the observer sees it, parallax and all) against the sun's, and how much of the
+// sun's area is covered (obs, 0 to 1). Lunar: the moon against the Earth's shadow (geocentric: everyone sees the same
+// thing), as the fraction of the moon's diameter inside the umbra (umbral) and the penumbra (penumbral).
+// Every size and separation is in degrees.
+function discOverlap(rs, rm, s) {            // fraction of the sun's disc (radius rs) covered by the moon's (radius rm)
+  if (s >= rs + rm) return 0;
+  if (s <= Math.abs(rs - rm)) return rm >= rs ? 1 : rm * rm / (rs * rs);
+  const a = rs * rs * Math.acos((s * s + rs * rs - rm * rm) / (2 * s * rs)) + rm * rm * Math.acos((s * s + rm * rm - rs * rs) / (2 * s * rm))
+    - .5 * Math.sqrt((-s + rs + rm) * (s + rs - rm) * (s - rs + rm) * (s + rs + rm));
+  return a / (Math.PI * rs * rs);
+}
+function eclipseState(sun, m) {
+  const rad = Math.PI / 180;
+  // solar
+  const cosSep = Math.sin(sun.alt * rad) * Math.sin(m.alt * rad) + Math.cos(sun.alt * rad) * Math.cos(m.alt * rad) * Math.cos((sun.az - m.az) * rad);
+  const sep = Math.acos(Math.min(1, cosSep)) / rad;
+  const rs = .26656 / sun.dist;                                           // the sun's angular radius
+  const topoDist = Math.sqrt(m.dist * m.dist + 6371 * 6371 - 2 * m.dist * 6371 * Math.sin(m.altGeo * rad));
+  const rm = Math.asin(1737.4 / topoDist) / rad;                          // and the moon's
+  // lunar
+  const dl = ((m.lon - (sun.lon + 180)) % 360 + 540) % 360 - 180;
+  const sepL = Math.acos(Math.min(1, Math.cos(m.lat * rad) * Math.cos(dl * rad))) / rad;
+  const pim = Math.asin(6378.14 / m.dist) / rad, pis = .002443 / sun.dist;   // horizontal parallaxes of the moon and the sun
+  const ru = 1.02 * (pim + pis - rs), rp = 1.02 * (pim + pis + rs), sm = .2725 * pim;   // umbra and penumbra radii at the moon (1.02: the Earth's air)
+  return { sep, rs, rm, obs: discOverlap(rs, rm, sep), sepL, ru, rp, sm, umbral: (ru + sm - sepL) / (2 * sm), penumbral: (rp + sm - sepL) / (2 * sm) };
+}
+
+// sky colours by sun altitude: very dark at night (so the screens don't glare), warming through dawn, bright blue by day
+const STAGES = [
+  [-18, { top: '#0b0e0d', bot: '#0f1312', glow: '#191e1b', hor: '#000000', soil: '#131614', horA: 0,   sunA: .2,  sunC: '#b8693a', moonC: '#8d8f89', moonD: .35 }],  // night
+  [-9,  { top: '#0d0f13', bot: '#151318', glow: '#1b1b20', hor: '#3a2431', soil: '#131414', horA: .4,  sunA: .2,  sunC: '#b8693a', moonC: '#8d8f89', moonD: .35 }],  // first light, plum
+  [-3,  { top: '#191d2a', bot: '#4a3036', glow: '#2c2428', hor: '#7a3f36', soil: '#1a1616', horA: .55, sunA: .3,  sunC: '#c8703a', moonC: '#9a9890', moonD: .4 }],   // dawn pink
+  [3,   { top: '#3a4c70', bot: '#d08a68', glow: '#a98674', hor: '#ff9a50', soil: '#2a2a24', horA: .5,  sunA: .6,  sunC: '#ffb06a', moonC: '#d8d3c8', moonD: .6 }],   // sunrise orange
+  [8,   { top: '#4f7db5', bot: '#e8c8a6', glow: '#bfb8ac', hor: '#f0b878', soil: '#2f4634', horA: .3,  sunA: .85, sunC: '#ffd88a', moonC: '#f4f1e8', moonD: .85 }],  // morning, blue coming in
+  [25,  { top: '#5da0dc', bot: '#d3e8f5', glow: '#e3f0f9', hor: '#ffffff', soil: '#33503a', horA: .15, sunA: 1,   sunC: '#fff0b8', moonC: '#fbfaf5', moonD: .9 }]    // day, bright blue
+];
+// the clocks' ink by sun altitude: light on the dark sky, and dark on the bright one. The switch is quick (4.5 to 5.5 degrees)
+// because halfway between the two, the text would be invisible against the sky
+const INKS = [
+  [-18, { text: '#b4b0a8', textN: '#9c998f', muted: '#6c6e68', faint: '#2c312d', ring: '#232824' }],
+  [-9,  { text: '#b4b0a8', textN: '#9c998f', muted: '#6c6e68', faint: '#2c312d', ring: '#232824' }],
+  [-3,  { text: '#c0bab2', textN: '#a8a29a', muted: '#7c7774', faint: '#3a3438', ring: '#34292c' }],
+  [3,   { text: '#f3ece2', textN: '#dcd2c6', muted: '#d6cdc3', faint: '#7c7076', ring: '#b88f7d' }],
+  [4.5, { text: '#f3ece2', textN: '#dcd2c6', muted: '#d6cdc3', faint: '#7c7076', ring: '#b88f7d' }],
+  [5.5, { text: '#1b2733', textN: '#3c4c5e', muted: '#4a5b6e', faint: '#8aa0b4', ring: '#9ab4c8' }],
+  [25,  { text: '#1b2733', textN: '#3c4c5e', muted: '#4a5b6e', faint: '#8aa0b4', ring: '#9ab4c8' }]
+];
+function mix(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  return '#' + [16, 8, 0].map(sh => {
+    const v = Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
+    return v.toString(16).padStart(2, '0');
+  }).join('');
+}
+function stageAt(stages, alt) {
+  if (alt <= stages[0][0]) return stages[0][1];
+  for (let i = 1; i < stages.length; i++) {
+    const [a1, s1] = stages[i - 1], [a2, s2] = stages[i];
+    if (alt <= a2) {
+      const t = (alt - a1) / (a2 - a1), out = {};
+      for (const k in s1) out[k] = typeof s1[k] === 'number' ? s1[k] + (s2[k] - s1[k]) * t : mix(s1[k], s2[k], t);
+      return out;
+    }
+  }
+  return stages[stages.length - 1][1];
+}
+const skyAt = alt => ({ ...stageAt(STAGES, alt), ...stageAt(INKS, alt) });
+// altitude and azimuth to world x, y: the view straight out of your window (WINDOW_AZ, from config) is dead centre,
+// clockwise of it (to its right, as you face it) to the right. 13 units a degree; the horizontal scale narrows a little
+// with height (the square root of cos altitude) so the high sky isn't stretched flat
+const SKY_SCALE = 13, HORIZON_Y = 960;     // the far hills' ridge, where things rise and set
+function skyXY(alt, az) {
+  const d = ((az - WINDOW_AZ + 540) % 360) - 180;
+  return [WORLD_CX + d * SKY_HSCALE * Math.sqrt(Math.cos(alt * RAD)), HORIZON_Y - alt * SKY_SCALE];
+}
+// the sun and moon aren't held to the window: their path is a full 360-degree panorama (cut at SEAM_AZ, see seamFor),
+// so they're on screen whenever they're up, moving clockwise (left to right) round the sky
+function pathXY(alt, az) {
+  return [(((az - SEAM_AZ) % 360 + 360) % 360) / 360 * WORLD_W, HORIZON_Y - alt * SKY_SCALE];
+}
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+// stars and planets by the real sky over SITE, refreshed with the once-a-minute tick (they drift 0.25 degrees in that time)
+function updateStars(now, sunAlt) {
+  const d = now / 864e5 - 10957.5, yrs = d / 365.25;
+  updatePlanets(d);
+  starsDark = clamp01((-sunAlt - 4) / 8);
+  SKY_OBJS.forEach((o, i) => {
+    const [ra, dec] = precess(o.ra, o.dec, yrs);
+    const h = horizontal(ra, dec, d, SITE.lat, SITE.lon);
+    const [x, y] = skyXY(h.alt, h.az);
+    // brighter ones show first at dusk (planets, being steady, don't twinkle)
+    const dark = clamp01((-sunAlt - Math.max(-3, 1.6 * (o.mag + 1.5))) / 6);
+    const op = (o.planet ? .95 : o.op) * dark * clamp01((h.alt + .5) / 5);
+    const hide = op < .01 || x < -10 || x > WORLD_W + 10 || y < -10;
+    const r = o.planet ? 2.6 + Math.min(2, Math.max(0, (1 - o.mag) * .36)) : o.r;
+    if (o.planet) Object.assign(o, { sx: x, sy: y, sr: r, shown: !hide });
+    for (const v of svgs) {
+      const c = v.skyEls[i];
+      c.setAttribute('visibility', hide ? 'hidden' : 'visible');
+      if (hide) continue;
+      c.setAttribute('cx', x.toFixed(1));
+      c.setAttribute('cy', y.toFixed(1));
+      c.setAttribute('r', r.toFixed(2));
+      c.setAttribute('opacity', op.toFixed(3));
+    }
+  });
+  // where each constellation's figure falls on screen, for hovering
+  for (const c of CONSTELLATIONS) c.proj = c.lines.map(line => line.map(p => {
+    const [ra, dec] = precess(p.ra, p.dec, yrs);
+    const h = horizontal(ra, dec, d, SITE.lat, SITE.lon);
+    const [x, y] = skyXY(h.alt, h.az);
+    return { x, y, ok: h.alt > 0 && x > -10 && x < WORLD_W + 10 && y > -10 };
+  }));
+  if (fakePick) picked = CONSTELLATIONS.find(c => c.id === fakePick) || PLANETS.find(p => p.name === fakePick) || null;   // ?pick=Ori previews a hover
+  if (starsDark < .3) picked = null;
+  renderHover();
+}
+
+/* ---------- hovering: planets and constellations light up under the cursor ---------- */
+let starsDark = 0, pointer = null, picked = null, pickedKey = null;
+function segDist(px, py, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
+  const t = len2 ? clamp01(((px - a.x) * dx + (py - a.y) * dy) / len2) : 0;
+  return Math.hypot(px - a.x - t * dx, py - a.y - t * dy);
+}
+function pickSky(wx, wy) {
+  if (starsDark < .3) return null;       // nothing to point at in daylight
+  let best = null, bd = 24;
+  for (const p of PLANETS) {
+    const dd = p.shown ? Math.hypot(p.sx - wx, p.sy - wy) : 1e9;
+    if (dd < bd) { bd = dd; best = p; }
+  }
+  if (best) return best;
+  bd = 14;
+  for (const c of CONSTELLATIONS) for (const line of c.proj || []) for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1], b = line[i];
+    if (!a.ok || !b.ok || Math.abs(a.x - b.x) > WORLD_W * .4) continue;
+    const dd = segDist(wx, wy, a, b);
+    if (dd < bd) { bd = dd; best = c; }
+  }
+  return best;
+}
+function hoverLabel(g, x, y, text, size, anchor) {
+  const t = el('text', { x: x.toFixed(1), y: y.toFixed(1), 'text-anchor': anchor || 'middle', fill: '#dfe3da', 'font-size': size, 'letter-spacing': '.3em', 'font-family': '"Segoe UI Variable Display", "Segoe UI", sans-serif', opacity: .85 }, g);
+  t.textContent = text.toUpperCase();
+}
+function renderHover() {
+  const key = picked && (picked.planet ? [picked.name, picked.sx, picked.sy].join() : picked.id + (picked.proj ? picked.proj[0][0].x : ''));
+  for (const v of svgs) {
+    const g = v.hover;
+    if (!picked) { g.style.opacity = 0; continue; }
+    if (key !== pickedKey || !g.firstChild) {
+      g.replaceChildren();
+      if (picked.planet) {
+        el('circle', { cx: picked.sx, cy: picked.sy, r: picked.sr + 9, fill: 'none', stroke: picked.color, 'stroke-width': 1.5, opacity: .8 }, g);
+        hoverLabel(g, picked.sx + picked.sr + 20, picked.sy + 5, picked.name, 14, 'start');
+      } else {
+        let d = '', sx = 0, sy = 0, n = 0, top = 1e9;
+        for (const line of picked.proj) {
+          let pen = false;
+          for (let i = 0; i < line.length; i++) {
+            const p = line[i], prev = line[i - 1];
+            if (!p.ok) { pen = false; continue; }
+            d += (pen && Math.abs(p.x - prev.x) < WORLD_W * .4 ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+            pen = true; sx += p.x; sy += p.y; n++; top = Math.min(top, p.y);
+            el('circle', { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 5, fill: 'none', stroke: '#dfe3da', 'stroke-width': 1, opacity: .35 }, g);
+          }
+        }
+        el('path', { d, fill: 'none', stroke: '#dfe3da', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: .3 }, g);
+        if (n) hoverLabel(g, Math.min(WORLD_W - 140, Math.max(140, sx / n)), Math.max(30, top - 22), picked.name, 14);
+      }
+    }
+    g.style.opacity = 1;
+  }
+  pickedKey = key;
+}
+function onPointer(e) {
+  pointer = e ? [e.clientX, e.clientY] : null;
+  let hit = null;
+  if (pointer) for (const v of svgs) {
+    const r = v.getBoundingClientRect(), ctm = v.getScreenCTM();
+    if (!ctm || !r.width || pointer[0] < r.left || pointer[0] > r.right || pointer[1] < r.top || pointer[1] > r.bottom) continue;
+    const pt = new DOMPoint(pointer[0], pointer[1]).matrixTransform(ctm.inverse());
+    hit = pickSky(pt.x, pt.y);
+    break;
+  }
+  if (hit !== picked) { picked = hit; renderHover(); }
+}
+addEventListener('mousemove', onPointer);
+document.documentElement.addEventListener('mouseleave', () => onPointer(null));
+const fakeSun = new URLSearchParams(location.search).get('sun');
+const fakeMoon = new URLSearchParams(location.search).get('moon');
+const fakePick = new URLSearchParams(location.search).get('pick');
+
+// scale of the sun and moon discs, in world units per degree of sky. It's far bigger than the 13 units a degree the
+// sky itself is drawn at, so an eclipse is on the discs' own scale: see the moon's placement in updateSky
+const DISC_SCALE = 190;
+let lastEclipse = null;
+
+function updateSky(now) {
+  const sun = sunPos(now, SITE.lat, SITE.lon);
+  if (fakeSun) [sun.alt, sun.az] = fakeSun.split(',').map(Number);
+  const { alt, az } = sun;
+  const m = moonPos(now, SITE.lat, SITE.lon, sun.lon);
+  if (fakeMoon) { [m.alt, m.az] = fakeMoon.split(',').map(Number); m.altGeo = m.alt; }
+  const ecl = lastEclipse = eclipseState(sun, m);
+
+  // a solar eclipse darkens the day: the eye judges brightness on a log scale, so 90% covered is only slightly dim and
+  // 99% is twilight. That's done by treating the sun as lower than it is (altEff) for everything about the sky: its
+  // colours, the clocks' ink, the stars and the dimming all follow the dusk palette, while the sun and moon discs
+  // themselves stay as bright as they are
+  const sunUp = clamp01((alt + 1) / 3);
+  const darkSol = ecl.obs > .01 ? sunUp * .85 * Math.log10(1 / ((1 - ecl.obs) + .003)) / Math.log10(1 / .003) : 0;
+  const altEff = alt - 20 * darkSol;
+  const s = skyAt(altEff), sReal = skyAt(alt), root = document.documentElement.style;
+  root.setProperty('--sky-top', s.top);
+  root.setProperty('--sky-bot', s.bot);
+  root.setProperty('--glow', s.glow);
+  root.setProperty('--hor', s.hor);
+  root.setProperty('--soil', s.soil);
+  root.setProperty('--soil-far', mix(s.soil, s.bot, .55));                     // the far hills fade towards the sky
+  root.setProperty('--soil-mid', mix(s.soil, s.bot, .25));
+  for (const [prop, key] of [['--muted', 'muted'], ['--text', 'text'], ['--text-night', 'textN'], ['--faint', 'faint'], ['--ring', 'ring']]) root.setProperty(prop, s[key]);
+
+  const [x, y] = pathXY(alt, az);
+  updateStars(now, altEff);
+
+  // the moon rides the same sky as the sun, with one exception. The sky is drawn at about 12 units a degree, but the discs
+  // are at DISC_SCALE, so an eclipse (which is all about the last half-degree) only works on the discs' scale. Within a
+  // degree of the sun the moon is placed at exactly that scale and in the true direction, so contacts happen when they
+  // should. Further out it eases back to its normal place on the sky, hovering a little clear of the sun for a day or so
+  // either side of new moon, so nothing jumps
+  const [mx0, my0] = pathXY(m.alt, m.az);
+  let mx = mx0, my = my0;
+  const sep = ecl.sep;
+  if (sep < 20) {
+    let vx = mx0 - x, vy = my0 - y;
+    if (vx > WORLD_CX) vx -= WORLD_W; else if (vx < -WORLD_CX) vx += WORLD_W;
+    const len = Math.hypot(vx, vy);
+    const dAz = ((m.az - az + 540) % 360) - 180;
+    const tx = dAz * Math.cos((m.alt + alt) / 2 * RAD), ty = -(m.alt - alt), tl = Math.hypot(tx, ty);   // the true offset, screen way up
+    const w = 1 - clamp01((sep - 3) / 9);                       // the true direction close in, the mapped one further out
+    let ux = (tl > 1e-9 ? tx / tl : 1) * w + (len > 1e-9 ? vx / len : 1) * (1 - w);
+    let uy = (tl > 1e-9 ? ty / tl : 0) * w + (len > 1e-9 ? vy / len : 0) * (1 - w);
+    const un = Math.hypot(ux, uy) || 1;
+    ux /= un; uy /= un;
+    const dist = sep <= 1 ? DISC_SCALE * sep : len + (DISC_SCALE - (WORLD_W / 360 + SKY_SCALE) / 2) * .5 * (1 + Math.cos(Math.PI * clamp01((sep - 1) / 19)));
+    mx = x + ux * dist; my = y + uy * dist;
+  }
+  const Rs = ecl.rs * DISC_SCALE, Rm = ecl.rm * DISC_SCALE;
+  const moonA = clamp01((m.alt + 4) / 6);
+  const tilt = Math.atan2(y - my, x - mx) * 180 / Math.PI + (m.phase < .5 ? 0 : 180);   // the lit side faces the sun
+  const shadowX = m.phase < .5 ? -192 * m.phase : 192 * (1 - m.phase);   // waxing is lit on the right
+
+  // in a solar eclipse the moon's dark side covers the sun, and in totality the corona shows
+  const baseA = sunUp * clamp01((ecl.rs + ecl.rm + .3 - ecl.sep) / .3);
+  const coronaA = sunUp * clamp01((ecl.obs - .985) / .0149);
+  const dimEl = document.getElementById('dim');
+  dimEl.style.transition = fakeTime ? 'none' : '';             // it eases over a minute, except in previews, which need it now
+  dimEl.style.opacity = (.3 * clamp01((-altEff - 2) / 10)).toFixed(3);   // a little extra dimming once the sun's down
+
+  // a lunar eclipse: Earth's shadow, offset from the moon in the direction of the sky's opposite point from the sun
+  const inShadow = ecl.penumbral > 0;
+  let shadow = null;
+  if (inShadow) {
+    const dAz = (((az + 180) % 360 - m.az + 540) % 360) - 180;
+    const tx = dAz * Math.cos(m.altGeo * RAD), ty = -(-alt - m.altGeo), tl = Math.hypot(tx, ty) || 1;
+    const off = ecl.sepL / ecl.sm * 46;
+    shadow = { cx: tx / tl * off, cy: ty / tl * off, ru: ecl.ru / ecl.sm * 46, rp: ecl.rp / ecl.sm * 46 };
+  }
+
+  for (const v of svgs) {
+    const k = v.sky;
+    k.hor.setAttribute('cx', x);
+    k.hor.setAttribute('opacity', s.horA.toFixed(3));
+    k.sun.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+    k.sun.setAttribute('opacity', clamp01((alt + 4) / 6).toFixed(3));
+    k.sunDisc.setAttribute('r', Rs.toFixed(1));
+    k.sunDisc.setAttribute('opacity', sReal.sunA.toFixed(3));
+    k.sunDisc.setAttribute('fill', sReal.sunC);
+    k.corona.setAttribute('r', (Rs * 3.2).toFixed(1));
+    k.corona.setAttribute('opacity', coronaA.toFixed(3));
+    k.moonDisc.setAttribute('fill', s.moonC);
+    k.moonDisc.setAttribute('opacity', s.moonD.toFixed(3));
+    k.moonBase.setAttribute('opacity', baseA.toFixed(3));
+    k.moonRing.setAttribute('opacity', (1 - baseA).toFixed(3));
+    k.moon.setAttribute('transform', `translate(${mx.toFixed(1)} ${my.toFixed(1)}) rotate(${tilt.toFixed(1)}) scale(${(Rm / 46).toFixed(3)})`);
+    k.moon.setAttribute('opacity', moonA.toFixed(3));
+    k.shadow.setAttribute('cx', shadowX.toFixed(1));
+    k.shadowRot.setAttribute('transform', `rotate(${(-tilt).toFixed(1)})`);
+    for (const [c, r] of [[k.penumbra, shadow && shadow.rp], [k.umbra, shadow && shadow.ru]]) {
+      c.setAttribute('opacity', shadow ? 1 : 0);
+      if (!shadow) continue;
+      c.setAttribute('cx', shadow.cx.toFixed(1));
+      c.setAttribute('cy', shadow.cy.toFixed(1));
+      c.setAttribute('r', r.toFixed(1));
+    }
+  }
+}
+
+/* ---------- petals ---------- */
+for (let i = 0; i < 10; i++) {
+  const p = document.createElement('div');
+  p.className = 'petal';
+  p.style.left = `${4 + Math.random() * 92}vw`;
+  p.style.animationDuration = `${38 + Math.random() * 30}s`;
+  p.style.animationDelay = `-${Math.random() * 60}s`;
+  if (i % 3 === 0) p.style.background = '#4c5b48';
+  document.body.appendChild(p);
+}
+
+/* ---------- clocks and settings ---------- */
+let cities = [];
+// the clocks, left to right: as listed in the settings (the default), or by timezone from west to east, in which case
+// cities in the same timezone keep their listed order unless one has a `nudge` (negative moves it left, positive right).
+// At most MAX_CITIES are shown
+function orderedCities(now) {
+  let list = cfg.cities.slice();
+  if (list.length > MAX_CITIES) console.warn(`Sky Clock: only the first ${MAX_CITIES} clocks are shown`);
+  list = list.slice(0, MAX_CITIES);
+  if (String(cfg.order).toLowerCase() !== 'timezone') return list;
+  const offs = list.map(c => {
+    try { return offsetMins(new Intl.DateTimeFormat('en-GB', { timeZone: c.timezone, timeZoneName: 'longOffset' }), now); } catch (e) { return 0; }
+  });
+  return list.map((c, i) => ({ c, i, off: offs[i] }))
+    .sort((a, b) => a.off - b.off || (a.c.nudge || 0) - (b.c.nudge || 0) || a.i - b.i).map(x => x.c);
+}
+function buildClocks() {
+  clocksEl.replaceChildren();
+  cities = [];
+  for (const c of orderedCities(fakeTime ? new Date(fakeTime) : new Date())) {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: c.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      const d = document.createElement('div');
+      d.className = 'city';
+      for (const cls of ['name', 'time']) d.appendChild(Object.assign(document.createElement('div'), { className: cls }));
+      d.firstChild.textContent = c.name;
+      d.insertAdjacentHTML('beforeend', '<div class="meta"><span class="dot"></span><span class="info"></span></div>');
+      clocksEl.appendChild(d);
+      cities.push({ ...c, el: d, fmt,
+        wk: new Intl.DateTimeFormat('en-GB', { timeZone: c.timezone, weekday: 'short' }),
+        off: new Intl.DateTimeFormat('en-GB', { timeZone: c.timezone, timeZoneName: 'longOffset' }) });
+    } catch (e) {
+      console.warn(`Sky Clock: skipping "${c.name}": "${c.timezone}" isn't a timezone name (try something like Europe/London)`);
+    }
+  }
+}
+
+function offsetMins(fmt, now) {
+  const s = fmt.formatToParts(now).find(p => p.type === 'timeZoneName').value; // "GMT+01:00" or "GMT"
+  const m = s.match(/([+-])(\d{2}):(\d{2})/);
+  return m ? (m[1] === '-' ? -1 : 1) * (+m[2] * 60 + +m[3]) : 0;
+}
+
+const fakeTime = new URLSearchParams(location.search).get('time');   // ?time=2026-10-09T19:30Z previews another moment
+let homeOff = new Intl.DateTimeFormat('en-GB', { timeZoneName: 'longOffset' });
+function tick() {
+  const now = fakeTime ? new Date(fakeTime) : new Date();
+  const home = offsetMins(homeOff, now);
+  for (const c of cities) {
+    const t = c.fmt.format(now);
+    const h = +t.slice(0, 2);
+    c.el.querySelector('.time').textContent = t;
+    c.el.classList.toggle('day', h >= 7 && h < 19);
+    c.el.classList.toggle('night', !(h >= 7 && h < 19));
+    const diff = (offsetMins(c.off, now) - home) / 60;
+    const rel = diff === 0 ? '' : ` · ${diff > 0 ? '+' : '−'}${Math.abs(diff)}h`;
+    c.el.querySelector('.info').textContent = c.wk.format(now) + rel;
+  }
+  updateSky(now);
+}
+
+// read the settings into the working values and redraw; runs at start and whenever Lively's panel changes something
+function applyConfig() {
+  SITE = { lat: +cfg.latitude || 0, lon: +cfg.longitude || 0 };
+  WINDOW_AZ = parseDirection(cfg.window);
+  SEAM_AZ = seamFor(SITE.lat);
+  document.body.classList.toggle('no-frog', !cfg.frog);
+  document.body.classList.toggle('no-crab', !cfg.crab);
+  const n = resolveMonitors(), bezel = Number.isFinite(+cfg.bezel) ? Math.max(0, +cfg.bezel) : 50;
+  if (n !== N_MON || bezel !== GAP || !svgs.length) { GAP = bezel; setWorld(n); rebuildScene(); }
+  try {
+    homeOff = new Intl.DateTimeFormat('en-GB', { timeZone: cfg.home === 'local' ? undefined : cfg.home, timeZoneName: 'longOffset' });
+  } catch (e) {
+    console.warn(`Sky Clock: "${cfg.home}" isn't a timezone name; offsets are shown from this computer's timezone`);
+    homeOff = new Intl.DateTimeFormat('en-GB', { timeZoneName: 'longOffset' });
+  }
+  buildClocks();
+  tick();
+}
+applyConfig();
+
+// Lively's customise panel (LivelyProperties.json) calls this once per property at start-up and on every change.
+// Switch it off with livelyPanel: false in config.js to make config.js the only source of settings.
+let applyTimer;
+window.livelyPropertyListener = (name, val) => {
+  if (!cfg.livelyPanel) return;
+  if (name === 'latitude' || name === 'longitude') cfg[name] = +val;
+  else if (name === 'window') cfg.window = typeof val === 'number' ? COMPASS[val] : val;
+  else if (name === 'cities') cfg.cities = parseCities(val);
+  else if (name === 'home') cfg.home = String(val).trim() || 'local';
+  else if (name === 'monitors') cfg.monitors = typeof val === 'number' ? ['auto', 1, 2, 3][val] : val;
+  else if (name === 'bezel') cfg.bezel = +val;
+  else if (name === 'order') cfg.order = typeof val === 'number' ? ['listed', 'timezone'][val] : val;
+  else if (name === 'frog' || name === 'crab') cfg[name] = !!val;
+  else return;
+  clearTimeout(applyTimer);
+  applyTimer = setTimeout(applyConfig, 150);
+};
+
+// the clocks show minutes and nothing in the sky moves faster than a few units a minute, so tick once a minute, on the minute
+setTimeout(() => { tick(); setInterval(tick, 60000); }, 60000 - (Date.now() % 60000));
+</script>
+</body>
+</html>

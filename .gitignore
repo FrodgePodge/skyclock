@@ -1,0 +1,5 @@
+# Windows clutter
+Thumbs.db
+desktop.ini
+# local zips and scratch
+*.zip

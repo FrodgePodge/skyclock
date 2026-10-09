@@ -1,0 +1,17 @@
+{
+  "AppVersion": "1.0.0.0",
+  "Title": "Sky Clock",
+  "Thumbnail": "thumbnail.jpg",
+  "Preview": "thumbnail.jpg",
+  "Desc": "A dark garden under the real sky over your location: sun, moon, 2,000 stars and the planets in their true places, with clocks for the cities you choose. Hover over a planet or constellation to see what it is.",
+  "Author": "Aemily",
+  "License": "MIT",
+  "Contact": null,
+  "Type": 1,
+  "FileName": "index.html",
+  "Arguments": null,
+  "IsAbsolutePath": false,
+  "Id": null,
+  "Tags": ["clock", "sky", "stars", "astronomy", "garden"],
+  "Version": 0
+}
